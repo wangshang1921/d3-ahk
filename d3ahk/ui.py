@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import html
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QAction, QFont
+from PySide6.QtGui import QAction, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -28,6 +29,12 @@ from d3ahk.config_store import load_config, load_last_or_default, save_config, s
 from d3ahk.hotkeys import GlobalHotkeyManager
 from d3ahk.models import ActionType, AppConfig, HotkeyConfig, TriggerConfig
 from d3ahk.supported_inputs import ACTION_OPTIONS, HOTKEY_LETTERS, INPUT_OPTIONS, input_label
+
+
+def _resource_path(relative_path: str) -> Path:
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / relative_path
+    return Path(__file__).resolve().parent.parent / relative_path
 
 
 class HotkeyDialog(QDialog):
@@ -536,7 +543,14 @@ class MainWindow(QMainWindow):
 def build_application() -> tuple[QApplication, MainWindow]:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("d3-ahk")
+
+    icon_path = _resource_path("assets/logo.ico")
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
+
     window = MainWindow()
+    if icon_path.exists():
+        window.setWindowIcon(QIcon(str(icon_path)))
     return app, window
 
 

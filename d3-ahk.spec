@@ -6,6 +6,7 @@ binaries = []
 hiddenimports = []
 tmp_ret = collect_all('PySide6')
 datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+datas += [('assets/logo.svg', 'assets'), ('assets/logo.ico', 'assets')]
 
 
 a = Analysis(
@@ -40,6 +41,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
+    icon=['assets/logo.ico'],
     codesign_identity=None,
     entitlements_file=None,
 )
