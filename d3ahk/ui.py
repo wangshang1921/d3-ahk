@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import sys
 
 from PySide6.QtCore import Qt
@@ -88,12 +89,17 @@ class RuntimeOverlay(QWidget):
         self._title = QLabel("运行中")
         self._title.setAlignment(Qt.AlignCenter)
         self._content = QLabel("")
-        self._content.setAlignment(Qt.AlignCenter)
+        self._content.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self._content.setTextFormat(Qt.RichText)
         self._content.setWordWrap(True)
+        self._content.setStyleSheet("font-size: 11px; font-weight: 600; line-height: 1.45;")
+        self._hint = QLabel("双击返回配置页 | 热键切换开始/停止")
+        self._hint.setAlignment(Qt.AlignRight)
+        self._hint.setStyleSheet("font-size: 10px; color: rgba(255, 255, 255, 205);")
 
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
         self.setAttribute(Qt.WA_TranslucentBackground, False)
-        self.setWindowOpacity(0.84)
+        self.setWindowOpacity(0.72)
 
         font = QFont()
         font.setPointSize(10)
@@ -102,9 +108,10 @@ class RuntimeOverlay(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
         layout.addWidget(self._title)
         layout.addWidget(self._content)
+        layout.addWidget(self._hint)
 
         self.resize_for_screen()
         self.set_running_state(True)
@@ -112,8 +119,10 @@ class RuntimeOverlay(QWidget):
     def resize_for_screen(self) -> None:
         screen = QApplication.primaryScreen()
         geometry = screen.availableGeometry() if screen else self.geometry()
-        width = max(600, geometry.width())
-        self.setGeometry(geometry.x(), geometry.y(), width, 110)
+        width = max(420, int(geometry.width() * 0.58))
+        width = min(width, 760)
+        x = geometry.x() + (geometry.width() - width) // 2
+        self.setGeometry(x, geometry.y() + 8, width, 108)
 
     def set_running_state(self, running: bool) -> None:
         self._running = running
@@ -127,13 +136,33 @@ class RuntimeOverlay(QWidget):
     def update_summary(self, config: AppConfig) -> None:
         active = config.active_triggers()
         if not active:
-            self._content.setText("当前没有已配置的按键")
+            self._content.setText(
+                "<span style='font-weight:700;'>当前没有已配置的按键</span>"
+                "<span style='opacity:0.9;'>，请双击返回配置页设置后再使用热键启动。</span>"
+            )
             return
-        summary = "    ".join(
-            f"{index + 1}. {input_label(trigger.input_code)} / {trigger.interval_ms}ms / {self._action_label(trigger.action)}"
-            for index, trigger in enumerate(active)
-        )
-        self._content.setText(summary)
+
+        rows: list[str] = []
+        max_rows = 4
+        for index, trigger in enumerate(active[:max_rows]):
+            key_text = html.escape(input_label(trigger.input_code))
+            action_text = html.escape(self._action_label(trigger.action))
+            interval_text = f"{trigger.interval_ms}ms"
+            rows.append(
+                " ".join(
+                    [
+                        f"<span style='padding:1px 6px; border:1px solid rgba(255,255,255,120); border-radius:8px;'>#{index + 1}</span>",
+                        f"<span style='font-weight:700;'>{key_text}</span>",
+                        f"<span style='padding:1px 6px; background: rgba(255,255,255,45); border-radius:8px;'>{action_text}</span>",
+                        f"<span style='padding:1px 6px; background: rgba(15,23,42,35); border-radius:8px;'>{interval_text}</span>",
+                    ]
+                )
+            )
+
+        if len(active) > max_rows:
+            rows.append(f"<span style='font-size:10px;'>... 其余 {len(active) - max_rows} 个按键仍在运行</span>")
+
+        self._content.setText("<br/>".join(rows))
 
     def _action_label(self, action: ActionType) -> str:
         if action is ActionType.PRESS:
@@ -190,53 +219,116 @@ class MainWindow(QMainWindow):
 
     def _build_ui(self) -> None:
         root = QWidget()
+        root.setStyleSheet(
+            """
+            QWidget {
+                background: #f3f6fb;
+                color: #1f2937;
+                font-size: 13px;
+            }
+            QLabel#metaLabel {
+                color: #334155;
+                font-weight: 600;
+            }
+            QWidget#slotCard {
+                background: #ffffff;
+                border: 1px solid #dce6f2;
+                border-radius: 12px;
+            }
+            QLabel#slotTitle {
+                color: #0f766e;
+                font-weight: 700;
+                font-size: 13px;
+            }
+            QLabel#fieldLabel {
+                color: #475569;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            QComboBox, QSpinBox {
+                background: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 8px;
+                padding: 6px 8px;
+                min-height: 32px;
+            }
+            QComboBox:focus, QSpinBox:focus {
+                border: 1px solid #0891b2;
+                background: #ffffff;
+            }
+            QPushButton#startButton {
+                background: #0f766e;
+                color: #ffffff;
+                border: 0;
+                border-radius: 10px;
+                font-weight: 700;
+                padding: 0 24px;
+            }
+            QPushButton#startButton:hover {
+                background: #0d9488;
+            }
+            QPushButton#startButton:pressed {
+                background: #115e59;
+            }
+            """
+        )
         layout = QVBoxLayout(root)
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(16)
 
         meta_row = QHBoxLayout()
-        self.name_label.setStyleSheet("font-weight: 600;")
+        self.name_label.setObjectName("metaLabel")
+        self.toggle_hotkey_label.setObjectName("metaLabel")
         meta_row.addWidget(self.name_label)
         meta_row.addSpacing(24)
         meta_row.addWidget(self.toggle_hotkey_label)
         meta_row.addStretch(1)
         layout.addLayout(meta_row)
 
+        section_title = QLabel("按键配置")
+        section_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #0f172a;")
+        layout.addWidget(section_title)
+
         slots_widget = QWidget()
         slots_layout = QGridLayout(slots_widget)
-        slots_layout.setHorizontalSpacing(10)
-        slots_layout.setVerticalSpacing(10)
+        slots_layout.setContentsMargins(0, 0, 0, 0)
+        slots_layout.setHorizontalSpacing(12)
+        slots_layout.setVerticalSpacing(12)
 
         for index in range(10):
             column = QWidget()
+            column.setObjectName("slotCard")
             column_layout = QVBoxLayout(column)
-            column_layout.setContentsMargins(8, 8, 8, 8)
+            column_layout.setContentsMargins(12, 12, 12, 12)
             column_layout.setSpacing(8)
-            column.setStyleSheet(
-                "background: #f4f7fb; border: 1px solid #d1d9e6; border-radius: 8px;"
-            )
 
             title_label = QLabel(f"按键 {index + 1}")
-            title_label.setStyleSheet("font-weight: 600;")
+            title_label.setObjectName("slotTitle")
             column_layout.addWidget(title_label)
 
             key_combo = QComboBox()
             for value, label in INPUT_OPTIONS:
                 key_combo.addItem(label, value)
-            column_layout.addWidget(QLabel("触发按键"))
+            key_label = QLabel("触发按键")
+            key_label.setObjectName("fieldLabel")
+            column_layout.addWidget(key_label)
             column_layout.addWidget(key_combo)
 
             action_combo = QComboBox()
             for label, action in ACTION_OPTIONS:
                 action_combo.addItem(label, action)
-            column_layout.addWidget(QLabel("动作"))
+            action_label = QLabel("动作")
+            action_label.setObjectName("fieldLabel")
+            column_layout.addWidget(action_label)
             column_layout.addWidget(action_combo)
 
             interval_spin = QSpinBox()
             interval_spin.setRange(1, 3_600_000)
             interval_spin.setSuffix(" ms")
             interval_spin.setSingleStep(10)
-            column_layout.addWidget(QLabel("触发间隔"))
+            interval_label = QLabel("触发间隔")
+            interval_label.setObjectName("fieldLabel")
+            column_layout.addWidget(interval_label)
             column_layout.addWidget(interval_spin)
             column_layout.addStretch(1)
 
@@ -253,6 +345,7 @@ class MainWindow(QMainWindow):
         action_row = QHBoxLayout()
         action_row.addStretch(1)
         start_button = QPushButton("启动")
+        start_button.setObjectName("startButton")
         start_button.setMinimumHeight(38)
         start_button.clicked.connect(self.start_runtime)
         action_row.addWidget(start_button)
@@ -362,13 +455,39 @@ class MainWindow(QMainWindow):
             return
 
         if self.isVisible():
-            self.start_runtime()
+            self._start_runtime(use_form=True)
             return
 
         self._start_runtime(use_form=False)
 
     def start_runtime(self) -> None:
-        self._start_runtime(use_form=True)
+        self._enter_runtime_page()
+
+    def _enter_runtime_page(self) -> None:
+        config = self._collect_from_form()
+        if not config.active_triggers():
+            QMessageBox.warning(self, "无法进入运行页", "至少需要配置一个触发按键。")
+            return
+
+        if not config.toggle_hotkey.has_modifier():
+            QMessageBox.warning(self, "热键无效", "请至少选择一个修饰键: Shift/Ctrl/Alt。")
+            return
+
+        self.current_config = config
+        save_config(self.current_config)
+        try:
+            self.hotkeys.register(self.current_config.toggle_hotkey)
+        except RuntimeError as exc:
+            QMessageBox.critical(self, "热键注册失败", str(exc))
+            return
+
+        # Enter runtime page in stopped state; real start is triggered by the toggle hotkey.
+        self.automation.stop()
+        self.overlay.update_summary(self.current_config)
+        self.overlay.set_running_state(False)
+        self.overlay.resize_for_screen()
+        self.overlay.show()
+        self.hide()
 
     def _start_runtime(self, use_form: bool) -> None:
         config = self._collect_from_form() if use_form else self.current_config
